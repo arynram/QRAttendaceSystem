@@ -21,43 +21,8 @@ def generate_auth_code():
     return f"{prefix}{suffix}"                                  # e.g. AB1282
 
 
-PRIVATE_IP_PREFIXES = (                                   # private/local IP ranges to skip geo check
-    "127.", "10.", "172.", "192.168.", "::1", "localhost"
-)
-
-
-def is_private_ip(ip):
-    if not ip:                                            # if no ip detected
-        return True                                       # treat as private (dev mode)
-    for prefix in PRIVATE_IP_PREFIXES:                   # iterate private prefixes
-        if ip.startswith(prefix):                         # check match
-            return True                                   # it's a private/local IP
-    return False                                          # it's a public IP
-
-
-def check_ip_india_no_vpn(ip):
-    if is_private_ip(ip):                                 # skip geo check on local dev network
-        return {"allowed": True, "reason": "local"}      # allow local network access
-
-    try:
-        url = f"http://ip-api.com/json/{ip}?fields=status,country,proxy,hosting" # free geo ip api
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"}) # set user agent
-        with urllib.request.urlopen(req, timeout=4) as resp:  # open url with 4s timeout
-            data = json.loads(resp.read().decode())       # parse json response
-
-        if data.get("status") != "success":               # api failed to resolve
-            return {"allowed": True, "reason": "api_fail"} # allow on api failure (don't block)
-
-        if data.get("country") != "India":                # non-indian ip detected
-            return {"allowed": False, "reason": "non_india", "country": data.get("country", "Unknown")}
-
-        if data.get("proxy") or data.get("hosting"):     # vpn or datacenter hosting detected
-            return {"allowed": False, "reason": "vpn_proxy"}
-
-        return {"allowed": True, "reason": "ok"}          # verified indian ip, no vpn
-
-    except Exception:
-        return {"allowed": True, "reason": "api_fail"}    # allow on network error (fail open)
+# IP security functions have been moved to ip_security.py
+import ip_security
 
 
 TEACHER_PROFILES = {
@@ -184,11 +149,13 @@ def process_attendance_submission(class_name, subject, date_str, time_slot, roll
 
     state = get_system_state()                            # fetch shared system state
 
-    # IP-based single submission policy: 1 IP = 1 attendance per lecture session
-    if client_ip:
-        if client_ip in state.get("marked_ips", {}):
-            prev = state["marked_ips"][client_ip]
-            return f"IP_ALREADY_USED:{prev}", None
+    # -------------------------------------------------------------------------
+    # [TEACHER DEMO: 1 IP = 1 ATTENDANCE RESTRICTION]
+    # Uncomment lines below to block multiple submissions from the same IP:
+    # -------------------------------------------------------------------------
+    # if client_ip and ip_security.is_ip_already_used(state, client_ip):
+    #     prev = state.get("marked_ips", {}).get(client_ip, "Unknown")
+    #     return f"IP_ALREADY_USED:{prev}", None
 
     # Check active in-memory session rolls
     if roll_number in state.get("session_present_rolls", []):
@@ -211,11 +178,11 @@ def process_attendance_submission(class_name, subject, date_str, time_slot, roll
         state["session_present_rolls"] = []
     state["session_present_rolls"].append(roll_number)
 
-    # Record IP mapping for 1 IP = 1 attendance enforcement
-    if client_ip:
-        if "marked_ips" not in state:
-            state["marked_ips"] = {}
-        state["marked_ips"][client_ip] = roll_number
+    # -------------------------------------------------------------------------
+    # Record IP mapping (Uncomment line below to track IPs for teacher demo):
+    # -------------------------------------------------------------------------
+    # if client_ip:
+    #     ip_security.register_ip_submission(state, client_ip, roll_number)
 
     append_attendance_to_csv(class_name, subject, date_str, time_slot, roll_number) # save to csv
     return "SUCCESS", schedule_info                       # return success with process metrics

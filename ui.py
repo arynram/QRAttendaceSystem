@@ -482,38 +482,37 @@ def render_teacher_screen():
 def render_student_screen(scanned_token):
     client_ip = get_client_ip()
 
-    # India IP & VPN Check
-    if "student_ip_checked" not in st.session_state:
-        st.session_state["student_ip_checked"] = logic.check_ip_india_no_vpn(client_ip)
-    ip_result = st.session_state["student_ip_checked"]
-
-    if not ip_result.get("allowed", True):
-        st.markdown("""
-        <div class="min-card" style="text-align: center; margin-top: 40px; border-color: #ef4444;">
-            <div style="font-size: 32px; margin-bottom: 8px;">🚫</div>
-            <div style="font-size: 18px; font-weight: 700; color: #ef4444;">Access Blocked</div>
-            <div style="font-size: 13px; color: #a1a1aa; margin-top: 6px;">
-                VPN detected or outside regional network. Please connect via your regular mobile network.
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        return
+    # -------------------------------------------------------------------------
+    # [TEACHER DEMO: INDIA IP & VPN DETECTION]
+    # Uncomment block below to block VPN and foreign IPs:
+    # -------------------------------------------------------------------------
+    # import ip_security
+    # if "student_ip_checked" not in st.session_state:
+    #     st.session_state["student_ip_checked"] = ip_security.check_ip_india_no_vpn(client_ip)
+    # ip_result = st.session_state.get("student_ip_checked", {"allowed": True})
+    # if not ip_result.get("allowed", True):
+    #     st.error("Access Blocked: VPN detected or outside regional network.")
+    #     return
 
     state = logic.get_system_state()
     current_session_id = state.get("session_id", f"{state['class_name']}_{state['subject']}_{state['date']}_{state['lecture_time']}")
 
-    # 1. IP Address Restriction: If this IP already marked attendance in this active lecture session
-    if client_ip and client_ip in state.get("marked_ips", {}):
-        prev_roll = state["marked_ips"][client_ip]
-        st.markdown(f"""
-        <div class="min-card" style="text-align: center; margin-top: 40px; border-color: #22c55e;">
-            <div style="font-size: 36px; margin-bottom: 8px;">✅</div>
-            <div style="font-size: 20px; font-weight: 700; color: #ffffff;">Attendance Already Recorded</div>
-            <div style="font-size: 24px; font-family: 'JetBrains Mono', monospace; color: #4ade80; margin: 10px 0;">Roll {prev_roll}</div>
-            <div style="font-size: 13px; color: #a1a1aa;">This device / IP address has already marked attendance for this lecture.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        return
+    # -------------------------------------------------------------------------
+    # [TEACHER DEMO: 1 IP = 1 ATTENDANCE DEVICE LOCK]
+    # Uncomment block below to enforce 1 submission per phone / IP:
+    # -------------------------------------------------------------------------
+    # import ip_security
+    # if ip_security.is_ip_already_used(state, client_ip):
+    #     prev_roll = state.get("marked_ips", {}).get(client_ip, "Unknown")
+    #     st.markdown(f"""
+    #     <div class="min-card" style="text-align: center; margin-top: 40px; border-color: #22c55e;">
+    #         <div style="font-size: 36px; margin-bottom: 8px;">✅</div>
+    #         <div style="font-size: 20px; font-weight: 700; color: #ffffff;">Attendance Already Recorded</div>
+    #         <div style="font-size: 24px; font-family: 'JetBrains Mono', monospace; color: #4ade80; margin: 10px 0;">Roll {prev_roll}</div>
+    #         <div style="font-size: 13px; color: #a1a1aa;">This device / IP address has already marked attendance for this lecture.</div>
+    #     </div>
+    #     """, unsafe_allow_html=True)
+    #     return
 
     # 2. Browser session check
     if st.session_state.get("submitted_session_id") == current_session_id and "submitted_roll" in st.session_state:
@@ -574,9 +573,9 @@ def render_student_screen(scanned_token):
 
             if res == "EMPTY_ROLL_NUMBER":
                 st.warning("Please enter your roll number.")
-            elif res.startswith("IP_ALREADY_USED"):
-                prev = res.split(":")[-1]
-                st.error(f"This device/IP has already marked attendance for Roll No. {prev}.")
+            # elif res.startswith("IP_ALREADY_USED"):
+            #     prev = res.split(":")[-1]
+            #     st.error(f"This device/IP has already marked attendance for Roll No. {prev}.")
             elif res == "ALREADY_MARKED":
                 st.warning(f"Roll No. {clean_roll} is already marked for this lecture.")
             elif res == "SUCCESS":
