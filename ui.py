@@ -208,9 +208,6 @@ def render_smartboard_pin_screen():
         <div style="font-size: 24px; font-weight: 700; color: #ffffff; margin-top: 4px;">
             Enter 6-Digit Faculty Code
         </div>
-        <div style="font-size: 13px; color: #71717a; margin-top: 4px;">
-            Default Code: <code style="color: #38bdf8; background: #18181b; padding: 2px 6px; border-radius: 6px;">123456</code> (Prof. Deepthi Rapeti)
-        </div>
     </div>
     """, unsafe_allow_html=True)                          # title
 
@@ -249,7 +246,7 @@ def render_smartboard_pin_screen():
                             st.session_state["pin_error"] = ""
                             st.rerun()
                         else:
-                            st.session_state["pin_error"] = "Invalid code. Please use 123456."
+                            st.session_state["pin_error"] = "Invalid faculty code. Please try again."
                             st.rerun()
                 elif key == "⌫":
                     if st.button("⌫", key="btn_back", use_container_width=True):
