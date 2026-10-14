@@ -175,6 +175,12 @@ def process_attendance_submission(class_name, subject, date_str, time_slot, roll
 
     state = get_system_state()                            # fetch shared system state
 
+    # IP-based single submission policy: 1 IP = 1 attendance per lecture session
+    if client_ip:
+        if client_ip in state.get("marked_ips", {}):
+            prev = state["marked_ips"][client_ip]
+            return f"IP_ALREADY_USED:{prev}", None
+
     # Check active in-memory session rolls
     if roll_number in state.get("session_present_rolls", []):
         return "ALREADY_MARKED", None
@@ -195,6 +201,12 @@ def process_attendance_submission(class_name, subject, date_str, time_slot, roll
     if "session_present_rolls" not in state:
         state["session_present_rolls"] = []
     state["session_present_rolls"].append(roll_number)
+
+    # Record IP mapping for 1 IP = 1 attendance enforcement
+    if client_ip:
+        if "marked_ips" not in state:
+            state["marked_ips"] = {}
+        state["marked_ips"][client_ip] = roll_number
 
     append_attendance_to_csv(class_name, subject, date_str, time_slot, roll_number) # save to csv
     return "SUCCESS", schedule_info                       # return success with process metrics
