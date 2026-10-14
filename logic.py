@@ -1,12 +1,18 @@
 import random                                             # for random code generation
 import time                                               # time module for countdown and timestamps
-from datetime import datetime                             # for date and time calculations
+from datetime import datetime, timezone, timedelta       # for date and time calculations
 import urllib.request                                     # for ip geolocation api calls
 import json                                              # for parsing api response
 import streamlit as st                                    # streamlit for shared cache_resource
 from csv_handler import read_present_students, append_attendance_to_csv # csv helper functions
 from qr_code import create_random_token                  # token generation helper
 import scheduler                                          # backend CPU scheduling engine
+
+
+def get_ist_now():
+    utc_now = datetime.now(timezone.utc)                 # get current UTC time
+    ist_tz = timezone(timedelta(hours=5, minutes=30))     # Indian Standard Time (UTC+5:30)
+    return utc_now.astimezone(ist_tz)                    # convert to IST
 
 
 def generate_auth_code():
@@ -70,22 +76,25 @@ def verify_teacher_pin(pin):
 
 
 def get_default_time_slot():
-    now = datetime.now()                                  # current datetime
+    now = get_ist_now()                                   # current IST datetime
+    hour = now.hour                                       # current hour
     minute = now.minute                                   # current minute
-    if minute < 15:                                       # 0 to 14 mins
-        target_min = 0                                    # round to :00
-        target_hour = now.hour                            # same hour
-    elif minute < 45:                                     # 15 to 44 mins
-        target_min = 30                                   # round to :30
-        target_hour = now.hour                            # same hour
-    else:                                                 # 45 to 59 mins
-        target_min = 0                                    # round to next hour :00
-        target_hour = (now.hour + 1) % 24                 # increment hour
 
-    end_dt = now.replace(hour=target_hour, minute=target_min, second=0, microsecond=0) # end time
-    start_hour = (target_hour - 1) % 24                   # 1 hour prior
-    start_dt = end_dt.replace(hour=start_hour)            # start time
-    return start_dt.strftime("%I:%M %p"), end_dt.strftime("%I:%M %p") # return start, end strings
+    # Nearest 30-min round (e.g. 3:25 -> ends 3:30, starts 2:30)
+    if 15 <= minute < 45:
+        end_h, end_m = hour, 30
+    elif minute >= 45:
+        end_h, end_m = (hour + 1) % 24, 0
+    else:  # 0 to 14
+        end_h, end_m = (hour + 1) % 24, 0
+
+    start_h = (end_h - 1) % 24
+    start_m = end_m
+
+    dummy = now.replace(second=0, microsecond=0)
+    start_dt = dummy.replace(hour=start_h, minute=start_m)
+    end_dt = dummy.replace(hour=end_h, minute=end_m)
+    return start_dt.strftime("%I:%M %p"), end_dt.strftime("%I:%M %p")
 
 
 @st.cache_resource

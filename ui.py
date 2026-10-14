@@ -287,10 +287,11 @@ def render_teacher_screen():
     faculty_sub = profile.get("subject", "COOS")
     faculty_classes = profile.get("classes", ["AIML A", "AIML B", "AIML C", "AIML D"])
 
-    # Auto network settings & time
+    # Auto network settings & time (IST)
     server_ip = qr_code.get_laptop_ip()
     server_port = "8501"
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    ist_now = logic.get_ist_now()
+    today_date = ist_now.strftime("%Y-%m-%d")
     auto_start, auto_end = logic.get_default_time_slot()
     auto_slot = f"{auto_start} - {auto_end}"
 
@@ -344,10 +345,26 @@ def render_teacher_screen():
             # 3. Editable Date and Time Slot Inputs
             col_d1, col_d2 = st.columns(2)
             with col_d1:
-                sel_date = st.date_input("📅 Lecture Date", value=datetime.now().date())
+                sel_date = st.date_input("📅 Lecture Date", value=ist_now.date())
                 sel_date_str = sel_date.strftime("%Y-%m-%d")
             with col_d2:
-                sel_slot = st.text_input("⏰ Lecture Time Slot", value=auto_slot)
+                # Dynamic time slot: updates to live auto slot or user selection
+                chosen_slot = st.session_state.get("chosen_slot", auto_slot)
+                st.markdown(f"<div style='font-size:11px; font-weight:600; color:#a1a1aa; text-transform:uppercase; margin-bottom:4px;'>⏰ Lecture Time Slot (Live Auto: {auto_slot})</div>", unsafe_allow_html=True)
+                sel_slot = st.text_input("Lecture Time Slot", value=chosen_slot, label_visibility="collapsed")
+
+            # Quick Presets for Smart Board 1-Touch Selection
+            col_p1, col_p2 = st.columns(2)
+            alt_h = ist_now.hour % 24
+            alt_slot = f"{ist_now.replace(hour=alt_h, minute=0).strftime('%I:%M %p')} - {ist_now.replace(hour=(alt_h+1)%24, minute=0).strftime('%I:%M %p')}"
+            with col_p1:
+                if st.button(f"⚡ Set Auto: {auto_slot}", use_container_width=True):
+                    st.session_state["chosen_slot"] = auto_slot
+                    st.rerun()
+            with col_p2:
+                if st.button(f"🕒 Set Hour: {alt_slot}", use_container_width=True):
+                    st.session_state["chosen_slot"] = alt_slot
+                    st.rerun()
 
             st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
