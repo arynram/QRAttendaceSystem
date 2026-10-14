@@ -439,9 +439,10 @@ def render_teacher_screen():
     col_l, col_qr, col_r = st.columns([1, 2.5, 1])
     with col_qr:
         st.image(qr_bytes, use_container_width=True)
+        countdown_label = "Initial QR Code:" if seconds_left > 10 else "Token refreshes in:"
         st.markdown(f"""
         <div style="text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #71717a; margin-top: 6px;">
-            Token refreshes in: <span style="color: #38bdf8; font-weight: 700;">{seconds_left}s</span>
+            {countdown_label} <span style="color: #38bdf8; font-weight: 700;">{seconds_left}s</span>
         </div>
         """, unsafe_allow_html=True)
 

@@ -98,7 +98,9 @@ def start_session(class_name, subject, date_str, time_slot, algo="Round Robin", 
     state["lecture_time"] = time_slot                     # save lecture time slot
     state["token"] = token                                # save active token
     state["created_time"] = now                           # record start time
-    state["expiry_time"] = now + 20.0                     # first QR code expires in 20 seconds (subsequent 10s)
+    state["expiry_time"] = now + 20.0                     # first QR code strictly expires in 20 seconds
+    state["is_first_qr"] = True                           # mark first QR flag
+    state["valid_tokens"] = {token: now + 20.0}           # map of valid tokens and their expiry
     state["scheduling_algo"] = algo                       # backend algorithm (Round Robin / FCFS)
     state["time_quantum"] = quantum                       # set time quantum
     state["processed_queue"] = []                         # reset live queue for new session
@@ -110,19 +112,34 @@ def start_session(class_name, subject, date_str, time_slot, algo="Round Robin", 
 def stop_session():
     state = get_system_state()                            # get shared memory state
     state["active"] = False                               # mark session inactive
+    state["token"] = ""                                   # clear token
+    state["expiry_time"] = 0.0                            # clear expiry
+    state["is_first_qr"] = True                           # reset for next session
+    state["valid_tokens"] = {}                            # clear tokens
     state["session_present_rolls"] = []                   # clear active session rolls
 
 
 def check_and_refresh_token():
     state = get_system_state()                            # get shared state
     now = time.time()                                     # current timestamp
-    remaining = int(state["expiry_time"] - now)           # calculate seconds remaining
+    remaining = int(state.get("expiry_time", 0) - now)     # calculate seconds remaining
 
-    if remaining <= 0 or not state["token"]:              # if 10 seconds expired
-        state["token"] = create_random_token()             # generate brand new token
+    if "valid_tokens" not in state:
+        state["valid_tokens"] = {}
+
+    # Clean up tokens older than 45 seconds from memory
+    state["valid_tokens"] = {t: exp for t, exp in state["valid_tokens"].items() if now <= exp + 45.0}
+
+    if remaining <= 0 or not state.get("token"):          # if expired or token empty
+        is_first = state.get("is_first_qr", False)
+        duration = 20.0 if is_first else 10.0            # 20s if first QR, 10s for subsequent
+        new_token = create_random_token()                 # generate brand new token
+        state["token"] = new_token
         state["created_time"] = now                       # reset creation time
-        state["expiry_time"] = now + 10.0                 # set new 10s expiry
-        remaining = 10                                    # reset countdown to 10
+        state["expiry_time"] = now + duration             # set expiry time
+        state["valid_tokens"][new_token] = state["expiry_time"]
+        state["is_first_qr"] = False                      # all next refreshes will be 10s
+        remaining = int(duration)                         # reset countdown to duration
 
     return remaining                                      # return countdown seconds
 
@@ -131,16 +148,23 @@ def verify_scanned_token(scanned_token):
     state = get_system_state()                            # get shared state
     now = time.time()                                     # current timestamp
 
-    if not state["active"]:                               # if teacher stopped session
+    if not state.get("active"):                           # if teacher stopped session
         return "SESSION_NOT_ACTIVE"                       # session inactive
 
-    if scanned_token != state["token"]:                   # if token doesn't match current
-        return "TOKEN_EXPIRED"                            # old qr code used
+    # Check against current active token
+    if scanned_token == state.get("token"):
+        if now <= state.get("expiry_time", 0) + 5.0:      # 5s network grace
+            return "TOKEN_VALID"
+        return "TOKEN_EXPIRED"
 
-    if now > state["expiry_time"]:                        # if 10 seconds elapsed
-        return "TOKEN_EXPIRED"                            # expired qr code
+    # Check against recent tokens (gives student mobile browser 20s grace to load form)
+    valid_tokens = state.get("valid_tokens", {})
+    if scanned_token in valid_tokens:
+        token_exp = valid_tokens[scanned_token]
+        if now <= token_exp + 20.0:
+            return "TOKEN_VALID"
 
-    return "TOKEN_VALID"                                  # token verified successfully
+    return "TOKEN_EXPIRED"                                # expired qr code
 
 
 def process_attendance_submission(class_name, subject, date_str, time_slot, roll_number, client_ip=None):
