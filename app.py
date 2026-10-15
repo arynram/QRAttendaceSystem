@@ -1,11 +1,11 @@
-from csv_handler import create_csv_file                   # import csv initializer
-from ui import render_app                                 # import ui renderer
+from csv_handler import create_csv_file                   # initialize attendance storage
+from ui import render_app                                 # load streamlit frontend interface
 
 
 def main():
     create_csv_file()                                     # create attendance.csv if not exists
-    render_app()                                          # start the streamlit app
+    render_app()                                          # run main application
 
 
 if __name__ == "__main__":
-    main()                                                # run main function
+    main()                                                # script entry point

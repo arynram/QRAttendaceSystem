@@ -1,83 +1,62 @@
-# 🏰 Clash of Clans QR Smart Attendance System ⚔️
-### *With Real-Time FCFS vs Round Robin CPU Scheduling & Downloadable War Report PDF*
+# ⚡ Smart QR Attendance System
 
-A gaming-themed attendance simulation built for college projects, featuring **Clash of Clans (CoC)** visual aesthetics, multi-class support, automated time-slot calculation, and instant **PDF War Reports**.
-
----
-
-## 🎮 Clash of Clans (CoC) Theme Highlights
-- **Town Hall Dark Stone Background**: Deep village stone base (`#11151A` - `#202731`) with golden trims (`#EAB308`).
-- **Wooden Plank Cards & Gold Storage Badges**: Beveled village boards with glowing badges (`🟡 Gold`, `🔮 Dark Elixir`, `🛡️ Shield Active`).
-- **3D Battle Buttons**: Green Battle Attack buttons (`⚔️ START CLAN ATTENDANCE WAR`) and Red Surrender buttons.
-- **Shield Countdown**: 10-second village shield timer linked to dynamic QR token regeneration.
+A clean, real-time college attendance management system built with **Python** and **Streamlit**. Designed for college smartboards and mobile scanning, featuring dynamic rolling QR codes, session isolation, duplicate prevention, and instant PDF report generation.
 
 ---
 
-## 📚 Supported Subjects & Classes
-- **Classes**:
-  - `AIML A`
-  - `AIML B`
-  - `AIML C`
-  - `AIML D`
-- **Subjects**:
-  - `PPCA` (Programming for Problem Solving with C / Advanced Programming)
-  - `DSA` (Data Structures & Algorithms)
-  - `COOS` (Computer Organization & Operating Systems)
-  - `M-III` (Mathematics III)
-  - `UHV-II` (Universal Human Values II)
+## 🎯 Project Overview
+
+This project provides an automated, contactless attendance solution for classrooms and lecture halls:
+- **Faculty Portal (Smartboard / Laptop)**:
+  - Secure 6-digit numeric PIN lock screen (`234567`).
+  - Faculty profile for **Ms. Seema Nagrani** (Department of AIML).
+  - Subject: **PPCA** (Class: `AIML C`).
+  - Automated lecture slot detection using Indian Standard Time (IST, UTC+5:30) with nearest 30-minute rounding and 1-touch preset buttons.
+  - Live rolling QR code display:
+    - **Initial QR duration**: 20 seconds (allows students time to open their phone camera).
+    - **Subsequent QR refreshes**: every 10 seconds.
+  - Live counter of marked students with real-time roll numbers.
+  - One-click **PDF Report Generation** and historical records download.
+
+- **Student Attendance Screen (Mobile Browser)**:
+  - Students scan the QR code projected on the smartboard.
+  - The URL loads the attendance form on their mobile browser.
+  - Built-in **20-second token grace period** to ensure students are not rejected due to network delay.
+  - Validates roll numbers and prevents duplicate attendance submissions for the same lecture.
 
 ---
 
-## ⏰ Automated Time-Slot & Date Fetching
-- **Date**: Automatically fetches today's date (`YYYY-MM-DD`) with full flexibility to change.
-- **Smart 30-Minute Rounding**:
-  - If a teacher starts a session around `03:25 PM`, the system rounds to the nearest 30-minute block (`03:30 PM`) and sets a default 1-hour slot: **`02:30 PM - 03:30 PM`**.
-  - Teachers can customize both start and end times in the setup screen.
+## 📂 Project Architecture
+
+The codebase is organized into modular Python files, making it clean, easy to maintain, and simple to explain during academic viva:
+
+| File | Purpose | Explanation for Evaluation |
+|---|---|---|
+| `app.py` | Main Entry Point | Initializes the CSV database and launches the Streamlit interface. |
+| `config.py` | Configuration & Credentials | Stores faculty profiles, PINs, department details, and QR refresh duration settings. |
+| `logic.py` | Core Business Logic | Manages session state, IST time slots, dynamic token countdowns, token verification, and duplicate checks. |
+| `qr_code.py` | QR Generator & Network Discovery | Detects local Wi-Fi IP address and compiles PNG image bytes for the dynamic QR code. |
+| `csv_handler.py` | Database Persistence Layer | Reads, writes, and filters attendance records in `attendance.csv` using clean Python file I/O. |
+| `pdf_generator.py` | Official PDF Generator | Uses ReportLab to compile downloadable attendance reports with college branding, metadata, and verified roll lists. |
+| `ip_security.py` | Security & Anti-Proxy Module | Contains IP detection, 1-device-per-lecture restriction, and proxy/VPN checks (toggleable for demonstrations). |
+| `ui.py` | Streamlit User Interface | Pure basic HTML elements, touch keypad, live dynamic QR countdown, and responsive student mobile forms. |
 
 ---
 
-## 📜 Downloadable PDF War Report
-- Once students mark attendance, the teacher receives an **Official Clan Attendance War Report (PDF)**:
-  - Class Name (e.g., `AIML A`)
-  - Subject (e.g., `COOS`)
-  - Date & Lecture Time Slot
-  - CPU Scheduling Algorithm (`Round Robin` vs `FCFS`)
-  - Table of all present students with timestamps and verification status.
+## 🚀 How to Run Locally
 
----
-
-## 📂 Project Structure
-
-```text
-qr_attendance/
-│
-├── pdf_generator.py    # ReportLab PDF generator for Clan War Reports
-├── scheduler.py        # CPU Scheduling Engine (FCFS & Round Robin algorithms + Gantt)
-├── logic.py            # Business logic (Token generation, smart time-slot, request logging)
-├── ui.py               # Clash of Clans UI (Custom CSS, Live QR, PDF Download, Gantt)
-├── qr_code.py          # Dynamic QR code generation & Wi-Fi IP detection
-├── csv_handler.py      # Attendance CSV read/write operations
-│
-├── app.py              # Main application launcher
-├── attendance.csv      # CSV data storage
-├── requirements.txt    # Dependencies (streamlit, qrcode, pillow, reportlab)
-└── README.md           # Documentation
+### 1. Requirements
+Ensure you have Python 3.10+ installed. Install the dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
----
+### 2. Launch the Application
+Double-click **`run_attendance.bat`** or run:
+```bash
+streamlit run app.py --server.address 0.0.0.0 --server.port 8501
+```
 
-## 🚀 How to Run
-
-1. **Install Dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Run Application**:
-   ```bash
-   streamlit run app.py
-   ```
-
-3. **Access Links**:
-   - **Teacher Dashboard (Laptop)**: [http://localhost:8501](http://localhost:8501)
-   - **Student Scan (Mobile)**: `http://<laptop-ip>:8501`
+- **Teacher Smartboard / Laptop Portal**: Open `http://localhost:8501`
+- **Faculty PIN Code**: `234567` (Ms. Seema Nagrani - PPCA)
+- **Student Mobile Access**: Connect phone to the same Wi-Fi / Hotspot and access `http://<LAPTOP_IP>:8501`

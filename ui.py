@@ -1,602 +1,290 @@
 import time                                               # time module for countdown and refresh
-from datetime import datetime                             # for date and time calculations
+from datetime import datetime                             # date and time formatting
 import streamlit as st                                    # streamlit web framework
-import logic                                              # attendance business logic
-import qr_code                                            # qr generation and ip utilities
+import config                                             # system settings and faculty profiles
+import logic                                              # core attendance business logic
+import qr_code                                            # qr code generator and network ip
 import csv_handler                                        # csv database handler
 import pdf_generator                                      # pdf report generator
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# NETWORK & IP UTILITIES
-# ─────────────────────────────────────────────────────────────────────────────
 def get_client_ip():
-    headers = getattr(st.context, "headers", {})
-    xff = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
+    headers = getattr(st.context, "headers", {})          # fetch request headers
+    xff = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For") # proxy header
     if xff:
-        return xff.split(",")[0].strip()
-    cf_ip = headers.get("cf-connecting-ip") or headers.get("CF-Connecting-IP")
+        return xff.split(",")[0].strip()                  # extract client ip
+    cf_ip = headers.get("cf-connecting-ip") or headers.get("CF-Connecting-IP") # cloudflare header
     if cf_ip:
-        return cf_ip.strip()
-    ctx_ip = getattr(st.context, "ip_address", None)
+        return cf_ip.strip()                              # extract cloudflare client ip
+    ctx_ip = getattr(st.context, "ip_address", None)      # native streamlit context
     if ctx_ip:
-        return str(ctx_ip).strip()
+        return str(ctx_ip).strip()                        # extract context ip
     return None
 
 
 def get_base_url(server_ip, server_port="8501"):
-    headers = getattr(st.context, "headers", {})
-    host = headers.get("host") or headers.get("Host")
+    headers = getattr(st.context, "headers", {})          # request headers
+    host = headers.get("host") or headers.get("Host")     # host domain or ip
     if host and "localhost" not in host and "127.0.0.1" not in host:
-        proto = headers.get("x-forwarded-proto", "https" if "streamlit.app" in host else "http")
-        return f"{proto}://{host}"
-    return f"http://{server_ip}:{server_port}"
+        proto = headers.get("x-forwarded-proto", "https" if "streamlit.app" in host else "http") # protocol
+        return f"{proto}://{host}"                        # remote or cloud base url
+    return f"http://{server_ip}:{server_port}"            # local network url
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MINIMALIST DARK THEME CSS
-# ─────────────────────────────────────────────────────────────────────────────
-def inject_minimal_theme():
-    st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
-
-    html, body, [class*="css"] {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-        background-color: #09090b !important;
-        color: #f4f4f5 !important;
-    }
-
-    .stApp {
-        background-color: #09090b !important;
-        max-width: 100vw;
-    }
-
-    /* Minimal Card */
-    .min-card {
-        background: #121217;
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 16px;
-        padding: 20px 24px;
-        margin-bottom: 16px;
-    }
-
-    /* PIN Preview Box */
-    .pin-display {
-        font-family: 'JetBrains Mono', monospace;
-        font-size: 32px;
-        font-weight: 700;
-        letter-spacing: 12px;
-        color: #38bdf8;
-        background: #18181b;
-        border: 1px solid rgba(56, 189, 248, 0.25);
-        border-radius: 14px;
-        padding: 14px 20px;
-        text-align: center;
-        min-height: 64px;
-        margin: 12px 0 20px 0;
-    }
-
-    /* Smart Board Large Touch Buttons */
-    .stButton > button {
-        border-radius: 12px !important;
-        font-family: 'JetBrains Mono', 'Inter', monospace !important;
-        font-size: 20px !important;
-        font-weight: 600 !important;
-        min-height: 56px !important;
-        background: #18181b !important;
-        color: #f4f4f5 !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        transition: all 0.15s ease !important;
-    }
-
-    .stButton > button:hover {
-        background: #27272a !important;
-        border-color: rgba(255, 255, 255, 0.25) !important;
-        color: #ffffff !important;
-        transform: translateY(-1px);
-    }
-
-    .stButton > button[kind="primary"] {
-        background: #2563eb !important;
-        color: #ffffff !important;
-        border: none !important;
-        font-size: 16px !important;
-    }
-
-    .stButton > button[kind="primary"]:hover {
-        background: #1d4ed8 !important;
-    }
-
-    .stButton > button[kind="secondary"] {
-        background: #7f1d1d !important;
-        color: #fca5a5 !important;
-        border: 1px solid #991b1b !important;
-        font-size: 16px !important;
-    }
-
-    /* Download Buttons */
-    .stDownloadButton > button {
-        border-radius: 12px !important;
-        min-height: 44px !important;
-        background: #18181b !important;
-        border: 1px solid rgba(255, 255, 255, 0.15) !important;
-        color: #38bdf8 !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-    }
-
-    .stDownloadButton > button:hover {
-        background: #27272a !important;
-        border-color: #38bdf8 !important;
-    }
-
-    /* Segment Pills */
-    div[role="radiogroup"] {
-        gap: 8px !important;
-    }
-
-    div[role="radiogroup"] > label {
-        background: #18181b !important;
-        border: 1px solid rgba(255, 255, 255, 0.1) !important;
-        border-radius: 10px !important;
-        padding: 8px 16px !important;
-        color: #e4e4e7 !important;
-        font-weight: 500 !important;
-    }
-
-    /* Date and Text Input Styling */
-    .stTextInput > div > div > input,
-    .stDateInput > div > div > input {
-        background: #18181b !important;
-        border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        border-radius: 12px !important;
-        color: #f4f4f5 !important;
-        font-family: 'JetBrains Mono', monospace !important;
-        font-size: 15px !important;
-        padding: 10px 14px !important;
-    }
-
-    .stDateInput label, .stTextInput label {
-        font-size: 11px !important;
-        font-weight: 600 !important;
-        color: #a1a1aa !important;
-        letter-spacing: 0.6px !important;
-        text-transform: uppercase !important;
-        margin-bottom: 4px !important;
-    }
-
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 10px;
-        padding: 8px 18px;
-        font-weight: 600;
-        background: #121217;
-        border: 1px solid rgba(255,255,255,0.08);
-        color: #a1a1aa;
-    }
-    .stTabs [aria-selected="true"] {
-        background: #2563eb !important;
-        color: #ffffff !important;
-        border-color: #2563eb !important;
-    }
-
-    /* Hide Default Chrome */
-    #MainMenu, footer, header { visibility: hidden; }
-    .block-container { padding-top: 1.5rem !important; max-width: 860px !important; }
-    </style>
-    """, unsafe_allow_html=True)                           # apply minimal styles
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SMART BOARD TOUCH PIN KEYPAD
-# ─────────────────────────────────────────────────────────────────────────────
 def render_smartboard_pin_screen():
-    if "entered_pin" not in st.session_state:              # track entered PIN
-        st.session_state["entered_pin"] = ""              # initialize empty
-    if "pin_error" not in st.session_state:                # error state
-        st.session_state["pin_error"] = ""                # initialize empty
+    if "entered_pin" not in st.session_state:
+        st.session_state["entered_pin"] = ""              # initialize pin buffer
+    if "pin_error" not in st.session_state:
+        st.session_state["pin_error"] = ""                # initialize pin error
 
-    st.markdown("""
-    <div style="text-align: center; margin-top: 24px; margin-bottom: 12px;">
-        <div style="font-size: 13px; font-weight: 600; letter-spacing: 1.5px; color: #a1a1aa; text-transform: uppercase;">
-            Faculty Smart Board Portal
-        </div>
-        <div style="font-size: 24px; font-weight: 700; color: #ffffff; margin-top: 4px;">
-            Enter 6-Digit Faculty Code
-        </div>
-    </div>
-    """, unsafe_allow_html=True)                          # title
+    st.markdown("<h1>Faculty Login</h1>", unsafe_allow_html=True) # basic html title
+    st.markdown("<p>Enter 6-digit faculty PIN to unlock attendance portal.</p>", unsafe_allow_html=True) # instruction
+    st.markdown("<hr>", unsafe_allow_html=True)           # horizontal line
 
-    # Render PIN display dots / numbers
-    entered = st.session_state["entered_pin"]
-    masked = "".join(["● " for _ in entered]) + "".join(["_ " for _ in range(6 - len(entered))])
-    display_content = masked.strip() if masked else "_ _ _ _ _ _"
+    entered = st.session_state["entered_pin"]             # entered digits
+    masked = "".join(["● " for _ in entered]) + "".join(["- " for _ in range(6 - len(entered))]) # masked view
+    st.markdown(f"<h3>PIN: {masked.strip()}</h3>", unsafe_allow_html=True) # basic html pin text
 
-    st.markdown(f"""
-    <div class="pin-display">
-        {display_content}
-    </div>
-    """, unsafe_allow_html=True)                          # preview PIN input
+    if st.session_state["pin_error"]:
+        st.markdown(f"<p><b>Error:</b> {st.session_state['pin_error']}</p>", unsafe_allow_html=True) # basic error text
 
-    if st.session_state["pin_error"]:                      # display error if invalid
-        st.error(st.session_state["pin_error"])
-
-    # 3x4 Touch Numeric Keypad
-    keypad = [
+    keypad = [                                            # 3x4 numeric keypad
         ["1", "2", "3"],
         ["4", "5", "6"],
         ["7", "8", "9"],
-        ["⌫", "0", "UNLOCK"]
+        ["Clear", "0", "Unlock"]
     ]
 
     for row in keypad:
-        cols = st.columns(3)
+        cols = st.columns(3)                              # 3 columns per row
         for i, key in enumerate(row):
             with cols[i]:
-                if key == "UNLOCK":
-                    if st.button("UNLOCK ⏎", key="btn_unlock", type="primary", use_container_width=True):
-                        prof = logic.verify_teacher_pin(st.session_state["entered_pin"])
+                if key == "Unlock":
+                    if st.button("Unlock", key="btn_unlock", use_container_width=True):
+                        prof = logic.verify_teacher_pin(st.session_state["entered_pin"]) # check pin
                         if prof:
-                            st.session_state["smartboard_unlocked"] = True
-                            st.session_state["teacher_profile"] = prof
-                            st.session_state["pin_error"] = ""
+                            st.session_state["smartboard_unlocked"] = True # unlock
+                            st.session_state["teacher_profile"] = prof    # save profile
+                            st.session_state["pin_error"] = ""            # clear error
                             st.rerun()
                         else:
-                            st.session_state["pin_error"] = "Invalid faculty code. Please try again."
+                            st.session_state["pin_error"] = "Invalid PIN. Please try again." # wrong pin
                             st.rerun()
-                elif key == "⌫":
-                    if st.button("⌫", key="btn_back", use_container_width=True):
-                        st.session_state["entered_pin"] = st.session_state["entered_pin"][:-1]
-                        st.session_state["pin_error"] = ""
+                elif key == "Clear":
+                    if st.button("Clear", key="btn_clear", use_container_width=True):
+                        st.session_state["entered_pin"] = ""      # clear pin input
+                        st.session_state["pin_error"] = ""        # clear error
                         st.rerun()
                 else:
                     if st.button(key, key=f"btn_{key}", use_container_width=True):
                         if len(st.session_state["entered_pin"]) < 6:
-                            st.session_state["entered_pin"] += key
-                            st.session_state["pin_error"] = ""
+                            st.session_state["entered_pin"] += key # append number
+                            st.session_state["pin_error"] = ""     # clear error
                             st.rerun()
 
-    # Clear input shortcut
-    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-    if st.button("Clear Input", use_container_width=True):
-        st.session_state["entered_pin"] = ""
-        st.session_state["pin_error"] = ""
-        st.rerun()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# TEACHER PROFILE & ATTENDANCE DASHBOARD
-# ─────────────────────────────────────────────────────────────────────────────
 def render_teacher_screen():
     state = logic.get_system_state()                      # fetch shared state
 
-    # If session NOT active and smartboard is locked -> prompt for PIN 123456
     if not state["active"] and not st.session_state.get("smartboard_unlocked", False):
-        render_smartboard_pin_screen()
+        render_smartboard_pin_screen()                    # show pin lock if not unlocked
         return
 
-    profile = st.session_state.get("teacher_profile", logic.TEACHER_PROFILES["123456"])
-    faculty_name = profile.get("name", "Prof. Deepthi Rapeti")
-    faculty_sub = profile.get("subject", "COOS")
-    faculty_classes = profile.get("classes", ["AIML A", "AIML B", "AIML C", "AIML D"])
+    profile = st.session_state.get("teacher_profile", config.FACULTY_PROFILES["234567"]) # default to seema ma'am
+    faculty_name = profile.get("name", "Ms. Seema Nagrani") # teacher name
+    faculty_sub = profile.get("subject", "PPCA")          # subject code
+    faculty_dept = profile.get("department", "AIML")      # department
+    faculty_classes = profile.get("classes", ["AIML C"])  # class list
 
-    # Auto network settings & time (IST)
-    server_ip = qr_code.get_laptop_ip()
-    server_port = "8501"
-    ist_now = logic.get_ist_now()
-    today_date = ist_now.strftime("%Y-%m-%d")
-    auto_start, auto_end = logic.get_default_time_slot()
-    auto_slot = f"{auto_start} - {auto_end}"
+    server_ip = qr_code.get_laptop_ip()                  # local network ip
+    server_port = "8501"                                  # local port
+    ist_now = logic.get_ist_now()                         # current ist time
+    auto_start, auto_end = logic.get_default_time_slot()  # nearest 30-min slot
+    auto_slot = f"{auto_start} - {auto_end}"              # default slot string
 
-    # Profile Header
-    col_h1, col_h2 = st.columns([3, 1])
-    with col_h1:
-        st.markdown(f"""
-        <div style="margin-bottom: 12px;">
-            <div style="font-size: 22px; font-weight: 700; color: #ffffff;">{faculty_name}</div>
-            <div style="font-size: 13px; color: #38bdf8; font-weight: 600;">
-                Subject: {faculty_sub} • Department: AIML
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-    with col_h2:
-        if not state["active"]:
-            if st.button("🔒 Logout", use_container_width=True):
-                st.session_state["smartboard_unlocked"] = False
-                st.session_state["entered_pin"] = ""
-                st.rerun()
-
-    # ── CASE 1: SESSION NOT ACTIVE (NEW LECTURE & PAST RECORDS TABS) ─────────
+    # Header section using basic HTML
+    st.markdown(f"<h2>{faculty_name}</h2>", unsafe_allow_html=True) # basic heading
+    st.markdown(f"<p><b>Subject:</b> {faculty_sub} | <b>Department:</b> {faculty_dept}</p>", unsafe_allow_html=True) # details
     if not state["active"]:
-        tab_start, tab_past = st.tabs(["⚡ Start Attendance", "📁 Past Attendance Records"])
+        if st.button("Logout"):
+            st.session_state["smartboard_unlocked"] = False # lock portal
+            st.session_state["entered_pin"] = ""          # clear pin
+            st.rerun()
+
+    st.markdown("<hr>", unsafe_allow_html=True)           # horizontal divider line
+
+    # Case 1: Session not active (Setup & Past Records)
+    if not state["active"]:
+        tab_start, tab_past = st.tabs(["Start Attendance", "Past Records"]) # tabs
 
         with tab_start:
-            # 1. Class Selection
-            st.markdown("<div style='font-size: 13px; color: #a1a1aa; font-weight: 600; margin-top: 10px; margin-bottom: 6px;'>SELECT CLASS</div>", unsafe_allow_html=True)
-            class_choice = st.radio(
-                "Select Class",
-                faculty_classes,
-                horizontal=True,
-                label_visibility="collapsed"
-            )
+            st.markdown("<p><b>Select Class:</b></p>", unsafe_allow_html=True) # class label
+            class_choice = st.radio("Select Class", faculty_classes, horizontal=True, label_visibility="collapsed") # class radio
+            st.markdown(f"<p><b>Subject:</b> {faculty_sub}</p>", unsafe_allow_html=True) # subject text
 
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-            # 2. Subject (Fixed to COOS for Prof. Deepthi Rapeti)
-            st.markdown("<div style='font-size: 13px; color: #a1a1aa; font-weight: 600; margin-bottom: 6px;'>SUBJECT</div>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class="min-card" style="padding: 12px 18px; display: inline-block; border-color: rgba(56, 189, 248, 0.4); background: #18181b;">
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; color: #38bdf8;">
-                    {faculty_sub}
-                </span>
-                <span style="font-size: 12px; color: #71717a; margin-left: 8px;">(Computer Organization and Operating Systems)</span>
-            </div>
-            """, unsafe_allow_html=True)
-
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-            # 3. Editable Date and Time Slot Inputs
-            col_d1, col_d2 = st.columns(2)
+            col_d1, col_d2 = st.columns(2)                # date and time columns
             with col_d1:
-                sel_date = st.date_input("📅 Lecture Date", value=ist_now.date())
-                sel_date_str = sel_date.strftime("%Y-%m-%d")
+                st.markdown("<p><b>Lecture Date:</b></p>", unsafe_allow_html=True)
+                sel_date = st.date_input("Date", value=ist_now.date(), label_visibility="collapsed") # date picker
+                sel_date_str = sel_date.strftime("%Y-%m-%d") # formatted date
             with col_d2:
-                # Dynamic time slot: updates to live auto slot or user selection
-                chosen_slot = st.session_state.get("chosen_slot", auto_slot)
-                st.markdown(f"<div style='font-size:11px; font-weight:600; color:#a1a1aa; text-transform:uppercase; margin-bottom:4px;'>⏰ Lecture Time Slot (Live Auto: {auto_slot})</div>", unsafe_allow_html=True)
-                sel_slot = st.text_input("Lecture Time Slot", value=chosen_slot, label_visibility="collapsed")
+                chosen_slot = st.session_state.get("chosen_slot", auto_slot) # current slot
+                st.markdown("<p><b>Lecture Time Slot:</b></p>", unsafe_allow_html=True)
+                sel_slot = st.text_input("Time Slot", value=chosen_slot, label_visibility="collapsed") # slot input
 
-            # Quick Presets for Smart Board 1-Touch Selection
-            col_p1, col_p2 = st.columns(2)
-            alt_h = ist_now.hour % 24
+            col_p1, col_p2 = st.columns(2)                # time preset buttons
+            alt_h = ist_now.hour % 24                     # hour
             alt_slot = f"{ist_now.replace(hour=alt_h, minute=0).strftime('%I:%M %p')} - {ist_now.replace(hour=(alt_h+1)%24, minute=0).strftime('%I:%M %p')}"
             with col_p1:
-                if st.button(f"⚡ Set Auto: {auto_slot}", use_container_width=True):
-                    st.session_state["chosen_slot"] = auto_slot
+                if st.button(f"Auto Time: {auto_slot}", use_container_width=True):
+                    st.session_state["chosen_slot"] = auto_slot # set auto slot
                     st.rerun()
             with col_p2:
-                if st.button(f"🕒 Set Hour: {alt_slot}", use_container_width=True):
-                    st.session_state["chosen_slot"] = alt_slot
+                if st.button(f"Exact Hour: {alt_slot}", use_container_width=True):
+                    st.session_state["chosen_slot"] = alt_slot # set hour slot
                     st.rerun()
 
-            st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
-            # Start Attendance Button
-            if st.button("🚀 START ATTENDANCE SESSION", type="primary", use_container_width=True):
-                logic.start_session(class_choice, faculty_sub, sel_date_str, sel_slot, "Round Robin", 2, faculty_name)
+            st.write("")                                  # spacing
+            if st.button("Start Attendance Session", use_container_width=True):
+                logic.start_session(class_choice, faculty_sub, sel_date_str, sel_slot, faculty_name) # start
                 st.rerun()
 
         with tab_past:
-            # Past Attendance for Prof. Deepthi Rapeti's COOS Lectures
-            past_sessions = csv_handler.get_subject_sessions(faculty_sub)
-
+            past_sessions = csv_handler.get_subject_sessions(faculty_sub) # get past records
             if past_sessions:
-                st.markdown("<div style='font-size: 14px; color: #a1a1aa; margin-top: 10px; margin-bottom: 14px;'>Download past attendance reports for COOS:</div>", unsafe_allow_html=True)
+                st.markdown(f"<h3>Past Attendance Records ({faculty_sub})</h3>", unsafe_allow_html=True)
                 for (c, d, t), rolls in sorted(past_sessions.items(), reverse=True):
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="min-card" style="display: flex; justify-content: space-between; align-items: center; padding: 14px 20px; margin-bottom: 8px;">
-                            <div>
-                                <span style="font-weight: 700; font-size: 16px; color: #ffffff;">{c}</span>
-                                <span style="font-size: 13px; color: #71717a; margin-left: 10px;">📅 {d} &nbsp;|&nbsp; ⏰ {t}</span>
-                            </div>
-                            <div>
-                                <span style="font-family: 'JetBrains Mono', monospace; font-size: 15px; font-weight: 700; color: #4ade80;">{len(rolls)}</span>
-                                <span style="font-size: 12px; color: #a1a1aa;"> Present</span>
-                            </div>
-                        </div>
-                        """, unsafe_allow_html=True)
-
-                        pdf_data = pdf_generator.generate_attendance_pdf(c, faculty_sub, d, t, rolls, "Round Robin", faculty_name)
-                        st.download_button(
-                            label=f"📥 Download {c} Report ({d})",
-                            data=pdf_data,
-                            file_name=f"COOS_{c}_{d}.pdf",
-                            mime="application/pdf",
-                            key=f"dl_{c}_{d}_{t}",
-                            use_container_width=True
-                        )
-                        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+                    pdf_data = pdf_generator.generate_attendance_pdf(c, faculty_sub, d, t, rolls, faculty_name) # pdf
+                    st.markdown(f"<p><b>Class:</b> {c} | <b>Date:</b> {d} | <b>Time:</b> {t} | <b>Present:</b> {len(rolls)}</p>", unsafe_allow_html=True)
+                    st.download_button(
+                        label=f"Download PDF ({c} - {d})",
+                        data=pdf_data,
+                        file_name=f"{faculty_sub}_{c}_{d}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_{c}_{d}_{t}"
+                    )                                     # download button
+                    st.markdown("<hr>", unsafe_allow_html=True)
             else:
-                st.markdown("""
-                <div class="min-card" style="text-align: center; padding: 30px; color: #71717a;">
-                    No past COOS attendance sessions recorded yet. Start your first session above!
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f"<p>No past attendance sessions recorded for {faculty_sub} yet.</p>", unsafe_allow_html=True) # empty notice
         return
 
-    # ── CASE 2: SESSION ACTIVE (DYNAMIC QR CODE) ─────────────────────────────
-    seconds_left = logic.check_and_refresh_token()
-    base_url = get_base_url(server_ip, server_port)
-    qr_url = f"{base_url}/?token={state['token']}"
-    qr_bytes = qr_code.generate_qr_image(qr_url)
+    # Case 2: Session Active (Live Rolling QR Code)
+    seconds_left = logic.check_and_refresh_token()        # countdown seconds
+    base_url = get_base_url(server_ip, server_port)       # access url
+    qr_url = f"{base_url}/?token={state['token']}"        # student attendance link
+    qr_bytes = qr_code.generate_qr_image(qr_url)         # qr image bytes
 
-    active_class = state["class_name"]
-    active_sub = state["subject"]
-    active_date = state["date"]
-    active_slot = state["lecture_time"]
-    present = csv_handler.read_present_students(active_class, active_sub, active_date, active_slot)
+    active_class = state["class_name"]                    # live class
+    active_sub = state["subject"]                         # live subject
+    active_date = state["date"]                           # live date
+    active_slot = state["lecture_time"]                   # live slot
+    present = csv_handler.read_present_students(active_class, active_sub, active_date, active_slot) # present list
 
-    # Active Bar
-    st.markdown(f"""
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <div>
-            <span style="font-size: 22px; font-weight: 700; color: #ffffff;">{active_class} • {active_sub}</span>
-            <div style="font-size: 12px; color: #71717a;">Faculty: {faculty_name} | {active_date} | {active_slot}</div>
-        </div>
-        <div style="text-align: right;">
-            <span style="font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 700; color: #38bdf8;">{len(present)}</span>
-            <span style="font-size: 13px; color: #a1a1aa;"> Marked</span>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # Live lecture details using basic HTML
+    st.markdown(f"<h2>Live Attendance: {active_class} — {active_sub}</h2>", unsafe_allow_html=True) # heading
+    st.markdown(f"<p><b>Faculty:</b> {faculty_name} | <b>Date:</b> {active_date} | <b>Time Slot:</b> {active_slot}</p>", unsafe_allow_html=True)
+    st.markdown(f"<h3>Total Students Marked: {len(present)}</h3>", unsafe_allow_html=True) # count
 
-    # QR Code centered
-    col_l, col_qr, col_r = st.columns([1, 2.5, 1])
+    col_l, col_qr, col_r = st.columns([1, 2, 1])          # center qr layout
     with col_qr:
-        st.image(qr_bytes, use_container_width=True)
-        countdown_label = "Initial QR Code:" if seconds_left > 10 else "Token refreshes in:"
-        st.markdown(f"""
-        <div style="text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #71717a; margin-top: 6px;">
-            {countdown_label} <span style="color: #38bdf8; font-weight: 700;">{seconds_left}s</span>
-        </div>
-        """, unsafe_allow_html=True)
+        st.image(qr_bytes, use_container_width=True)      # display qr code image
+        countdown_label = "Initial QR Code (20s):" if state.get("qr_count", 1) <= 1 else "QR refreshes in:" # label
+        st.markdown(f"<p style='text-align: center;'><b>{countdown_label} {seconds_left}s</b></p>", unsafe_allow_html=True) # countdown text
 
-    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
-    # Stop & Download
-    col_stop, col_pdf = st.columns(2)
+    col_stop, col_pdf = st.columns(2)                     # action buttons
     with col_stop:
-        if st.button("🛑 STOP ATTENDANCE", type="secondary", use_container_width=True):
-            logic.stop_session()
+        if st.button("Stop Attendance", use_container_width=True):
+            logic.stop_session()                          # stop session
             st.rerun()
     with col_pdf:
-        pdf_data = pdf_generator.generate_attendance_pdf(active_class, active_sub, active_date, active_slot, present, "Round Robin", faculty_name)
+        pdf_data = pdf_generator.generate_attendance_pdf(active_class, active_sub, active_date, active_slot, present, faculty_name) # compile pdf
         st.download_button(
-            label="📄 DOWNLOAD PDF REPORT",
+            label="Download PDF Report",
             data=pdf_data,
             file_name=f"Attendance_{active_class}_{active_sub}_{active_date}.pdf",
             mime="application/pdf",
             use_container_width=True
-        )
+        )                                                 # download report
 
-    # Live Present Rolls
     if present:
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-        rolls_html = "".join([f"<span style='background:#18181b; border:1px solid rgba(255,255,255,0.1); border-radius:8px; padding:4px 10px; font-family:JetBrains Mono,monospace; font-size:12px; color:#4ade80;'>Roll {r} ✓</span> " for r in present])
-        st.markdown(f"<div style='display:flex; flex-wrap:wrap; gap:6px;'>{rolls_html}</div>", unsafe_allow_html=True)
+        roll_text = ", ".join([f"Roll {r}" for r in present])
+        st.markdown(f"<p><b>Present Students ({len(present)}):</b> {roll_text}</p>", unsafe_allow_html=True) # present list text
 
-    time.sleep(1)
-    st.rerun()
+    time.sleep(1)                                         # 1 second wait
+    st.rerun()                                            # auto rerun for countdown
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STUDENT MOBILE ATTENDANCE SCREEN
-# ─────────────────────────────────────────────────────────────────────────────
 def render_student_screen(scanned_token):
-    client_ip = get_client_ip()
+    client_ip = get_client_ip()                           # client ip
+    state = logic.get_system_state()                      # system state
+    current_session_id = state.get("session_id", f"{state['class_name']}_{state['subject']}_{state['date']}_{state['lecture_time']}") # session id
 
-    # -------------------------------------------------------------------------
-    # [TEACHER DEMO: INDIA IP & VPN DETECTION]
-    # Uncomment block below to block VPN and foreign IPs:
-    # -------------------------------------------------------------------------
-    # import ip_security
-    # if "student_ip_checked" not in st.session_state:
-    #     st.session_state["student_ip_checked"] = ip_security.check_ip_india_no_vpn(client_ip)
-    # ip_result = st.session_state.get("student_ip_checked", {"allowed": True})
-    # if not ip_result.get("allowed", True):
-    #     st.error("Access Blocked: VPN detected or outside regional network.")
-    #     return
+    st.markdown("<h1>Student Attendance</h1>", unsafe_allow_html=True) # basic title
+    st.markdown("<hr>", unsafe_allow_html=True)           # horizontal line
 
-    state = logic.get_system_state()
-    current_session_id = state.get("session_id", f"{state['class_name']}_{state['subject']}_{state['date']}_{state['lecture_time']}")
-
-    # -------------------------------------------------------------------------
-    # [TEACHER DEMO: 1 IP = 1 ATTENDANCE DEVICE LOCK]
-    # Uncomment block below to enforce 1 submission per phone / IP:
-    # -------------------------------------------------------------------------
-    # import ip_security
-    # if ip_security.is_ip_already_used(state, client_ip):
-    #     prev_roll = state.get("marked_ips", {}).get(client_ip, "Unknown")
-    #     st.markdown(f"""
-    #     <div class="min-card" style="text-align: center; margin-top: 40px; border-color: #22c55e;">
-    #         <div style="font-size: 36px; margin-bottom: 8px;">✅</div>
-    #         <div style="font-size: 20px; font-weight: 700; color: #ffffff;">Attendance Already Recorded</div>
-    #         <div style="font-size: 24px; font-family: 'JetBrains Mono', monospace; color: #4ade80; margin: 10px 0;">Roll {prev_roll}</div>
-    #         <div style="font-size: 13px; color: #a1a1aa;">This device / IP address has already marked attendance for this lecture.</div>
-    #     </div>
-    #     """, unsafe_allow_html=True)
-    #     return
-
-    # 2. Browser session check
     if st.session_state.get("submitted_session_id") == current_session_id and "submitted_roll" in st.session_state:
-        already_roll = st.session_state["submitted_roll"]
-        st.markdown(f"""
-        <div class="min-card" style="text-align: center; margin-top: 40px; border-color: #22c55e;">
-            <div style="font-size: 36px; margin-bottom: 8px;">✅</div>
-            <div style="font-size: 20px; font-weight: 700; color: #ffffff;">Attendance Recorded</div>
-            <div style="font-size: 24px; font-family: 'JetBrains Mono', monospace; color: #4ade80; margin: 10px 0;">Roll {already_roll}</div>
-            <div style="font-size: 12px; color: #71717a;">Your attendance for this lecture has been recorded.</div>
-        </div>
-        """, unsafe_allow_html=True)
+        already_roll = st.session_state["submitted_roll"]  # recorded roll
+        st.markdown("<h3>Attendance Recorded</h3>", unsafe_allow_html=True) # heading
+        st.markdown(f"<p>Your attendance for <b>Roll No. {already_roll}</b> has been recorded.</p>", unsafe_allow_html=True) # notice
         return
 
-    # Verify Token
-    token_status = logic.verify_scanned_token(scanned_token)
+    token_status = logic.verify_scanned_token(scanned_token) # verify token
 
     if token_status == "SESSION_NOT_ACTIVE":
-        st.warning("Attendance session is not currently active.")
+        st.markdown("<p><b>Attendance session is not currently active.</b></p>", unsafe_allow_html=True) # inactive
         return
 
-    now = time.time()
+    now = time.time()                                     # timestamp
     if token_status == "TOKEN_VALID":
-        st.session_state["token_time"] = now
-        st.session_state["valid_token"] = scanned_token
+        st.session_state["token_time"] = now              # record scan time
+        st.session_state["valid_token"] = scanned_token   # save valid token
 
-    # 60s typing grace window
     is_valid = (
         st.session_state.get("valid_token") == scanned_token
         and (now - st.session_state.get("token_time", 0)) <= 60
-    )
+    )                                                     # 60s typing buffer
 
     if not is_valid:
-        st.error("QR Code expired. Please scan the current code from the screen.")
+        st.markdown("<p><b>QR Code expired. Please scan the latest QR code from the screen.</b></p>", unsafe_allow_html=True) # expired
         return
 
-    class_name = state["class_name"]
-    subject = state["subject"]
-    date_str = state["date"]
-    time_slot = state["lecture_time"]
-    faculty = state.get("faculty_name", "Prof. Deepthi Rapeti")
+    class_name = state["class_name"]                      # class name
+    subject = state["subject"]                            # subject
+    date_str = state["date"]                              # date
+    time_slot = state["lecture_time"]                     # time slot
+    faculty = state.get("faculty_name", "Ms. Seema Nagrani") # faculty name
 
-    st.markdown(f"""
-    <div style="text-align: center; margin-top: 20px; margin-bottom: 16px;">
-        <div style="font-size: 20px; font-weight: 700; color: #ffffff;">{class_name} • {subject}</div>
-        <div style="font-size: 13px; color: #38bdf8; margin-top: 2px;">Faculty: {faculty}</div>
-        <div style="font-size: 12px; color: #71717a; margin-top: 2px;">{date_str} | {time_slot}</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(f"<p><b>Class:</b> {class_name} | <b>Subject:</b> {subject}</p>", unsafe_allow_html=True) # details
+    st.markdown(f"<p><b>Faculty:</b> {faculty} | <b>Date:</b> {date_str} ({time_slot})</p>", unsafe_allow_html=True) # details
 
     with st.form("student_form"):
-        roll_no = st.text_input("Enter Roll Number", placeholder="e.g. 39")
-        submit = st.form_submit_button("MARK ATTENDANCE", type="primary", use_container_width=True)
+        st.markdown("<p><b>Enter Your Roll Number:</b></p>", unsafe_allow_html=True)
+        roll_no = st.text_input("Roll Number", placeholder="e.g. 39", label_visibility="collapsed") # input
+        submit = st.form_submit_button("Submit Attendance", use_container_width=True) # submit
 
         if submit:
-            clean_roll = roll_no.strip()
-            res, _ = logic.process_attendance_submission(class_name, subject, date_str, time_slot, clean_roll, client_ip)
+            clean_roll = roll_no.strip()                  # sanitize input
+            res = logic.process_attendance_submission(class_name, subject, date_str, time_slot, clean_roll, client_ip) # submit
 
             if res == "EMPTY_ROLL_NUMBER":
-                st.warning("Please enter your roll number.")
-            # elif res.startswith("IP_ALREADY_USED"):
-            #     prev = res.split(":")[-1]
-            #     st.error(f"This device/IP has already marked attendance for Roll No. {prev}.")
+                st.markdown("<p><b>Error:</b> Please enter your roll number.</p>", unsafe_allow_html=True)
             elif res == "ALREADY_MARKED":
-                st.warning(f"Roll No. {clean_roll} is already marked for this lecture.")
+                st.markdown(f"<p><b>Notice:</b> Roll No. {clean_roll} is already marked for this lecture.</p>", unsafe_allow_html=True)
             elif res == "SUCCESS":
-                st.session_state["submitted_session_id"] = current_session_id
-                st.session_state["submitted_roll"] = clean_roll
-                st.success(f"Roll No. {clean_roll} marked successfully!")
-                time.sleep(0.8)
+                st.session_state["submitted_session_id"] = current_session_id # save session submission
+                st.session_state["submitted_roll"] = clean_roll # save submitted roll
                 st.rerun()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN APP ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
 def render_app():
-    st.set_page_config(
+    st.set_page_config(                                   # page configuration
         page_title="Smart Attendance",
-        page_icon="⚡",
+        page_icon="📋",
         layout="centered"
     )
-    inject_minimal_theme()
 
-    token = st.query_params.get("token")
+    token = st.query_params.get("token")                 # check token query parameter
     if token:
-        render_student_screen(token)
+        render_student_screen(token)                      # render student form
     else:
-        render_teacher_screen()
+        render_teacher_screen()                           # render teacher dashboard
