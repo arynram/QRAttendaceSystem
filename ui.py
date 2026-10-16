@@ -72,30 +72,57 @@ def render_student_screen(token):
     cid = state.get("session_id", f"{state['class_name']}_{state['subject']}_{state['date']}_{state['lecture_time']}")
     st.markdown("<h1>Student Attendance</h1><hr>", unsafe_allow_html=True)
 
+    if not state.get("active"):
+        st.markdown("<p style='color:red;'><b>Attendance session is not currently active.</b></p>", unsafe_allow_html=True)
+        return
+
     if st.session_state.get("submitted_session_id") == cid:
         st.markdown(f"<h3>Attendance Recorded</h3><p>Your attendance for <b>Roll No. {st.session_state.get('submitted_roll')}</b> has been recorded.</p>", unsafe_allow_html=True)
         return
 
     status = logic.verify_scanned_token(token)            # verify qr token
-    if status == "SESSION_NOT_ACTIVE":
-        st.markdown("<p><b>Attendance session is not currently active.</b></p>", unsafe_allow_html=True)
-        return
+
+    # Check if this token is currently active and valid
     if status == "TOKEN_VALID":
-        st.session_state.update(token_time=time.time(), valid_token=token) # cache valid token
-    if st.session_state.get("valid_token") != token or (time.time() - st.session_state.get("token_time", 0)) > 60:
-        st.markdown("<p><b>QR Code expired. Please scan the latest QR code.</b></p>", unsafe_allow_html=True)
+        if st.session_state.get("valid_token") != token:
+            st.session_state["valid_token"] = token
+            st.session_state["token_time"] = time.time()
+
+    submission_window = getattr(config, "SUBMISSION_WINDOW", 25.0)
+    is_valid_session = (
+        st.session_state.get("valid_token") == token and
+        (time.time() - st.session_state.get("token_time", 0)) <= submission_window
+    )
+
+    if not is_valid_session:
+        st.markdown("<p style='color:red; font-size:1.1rem;'><b>⚠️ QR Code expired. Please scan the latest QR code displayed on the screen.</b></p>", unsafe_allow_html=True)
         return
 
+    elapsed = time.time() - st.session_state.get("token_time", 0)
+    remaining_sec = max(0, int(submission_window - elapsed))
+
     st.markdown(f"<p><b>Class:</b> {state['class_name']} | <b>Subject:</b> {state['subject']}</p><p><b>Faculty:</b> {state.get('faculty_name', 'Ms. Seema Nagrani')}</p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='color:gray; font-size:0.9rem;'>⏳ You have <b>{remaining_sec}s</b> to submit your roll number.</p>", unsafe_allow_html=True)
+
     with st.form("student_form"):
         roll = st.text_input("Enter Roll Number:")        # roll number input
         if st.form_submit_button("Submit Attendance"):
+            if not state.get("active"):
+                st.markdown("<p style='color:red;'><b>Attendance session ended by faculty.</b></p>", unsafe_allow_html=True)
+                return
+
+            if (time.time() - st.session_state.get("token_time", 0)) > submission_window:
+                st.markdown("<p style='color:red;'><b>⚠️ Submission timed out! QR Code expired. Please scan the latest QR code.</b></p>", unsafe_allow_html=True)
+                return
+
             ip = (getattr(st.context, "headers", {}).get("x-forwarded-for") or "127.0.0.1").split(",")[0].strip()
             res = logic.process_attendance_submission(state["class_name"], state["subject"], state["date"], state["lecture_time"], roll.strip(), ip)
             if res == "EMPTY_ROLL_NUMBER":
-                st.markdown("<p><b>Error:</b> Please enter your roll number.</p>", unsafe_allow_html=True)
+                st.markdown("<p style='color:red;'><b>Error:</b> Please enter your roll number.</p>", unsafe_allow_html=True)
             elif res == "ALREADY_MARKED":
-                st.markdown(f"<p><b>Notice:</b> Roll {roll.strip()} is already marked for this lecture.</p>", unsafe_allow_html=True)
+                st.markdown(f"<p style='color:#e67e22;'><b>Notice:</b> Roll {roll.strip()} is already marked for this lecture.</p>", unsafe_allow_html=True)
+            elif res == "SESSION_NOT_ACTIVE":
+                st.markdown("<p style='color:red;'><b>Attendance session is no longer active.</b></p>", unsafe_allow_html=True)
             elif res == "SUCCESS":
                 st.session_state.update(submitted_session_id=cid, submitted_roll=roll.strip())
                 st.rerun()

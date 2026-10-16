@@ -9,4 +9,5 @@ FACULTY_PROFILES = {
 
 INITIAL_QR_DURATION = 20.0                                        # first qr code duration in seconds
 REGULAR_QR_DURATION = 10.0                                        # subsequent qr refreshes in seconds
-MOBILE_GRACE_PERIOD = 20.0                                        # grace buffer for phone form loading
+SUBMISSION_WINDOW = 25.0                                          # max seconds to enter roll and submit after valid scan
+

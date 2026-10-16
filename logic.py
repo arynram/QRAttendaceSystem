@@ -123,18 +123,17 @@ def verify_scanned_token(scanned_token):
     if not state.get("active"):
         return "SESSION_NOT_ACTIVE"                       # session stopped by teacher
 
-    if scanned_token == state.get("token"):               # direct match with active token
-        if now <= state.get("expiry_time", 0) + 5.0:      # 5s network grace buffer
+    if not scanned_token:
+        return "TOKEN_EXPIRED"
+
+    # Only the currently active token displayed on the smartboard is valid
+    if scanned_token == state.get("token"):
+        if now <= state.get("expiry_time", 0):
             return "TOKEN_VALID"                          # token accepted
         return "TOKEN_EXPIRED"                            # token timed out
 
-    valid_tokens = state.get("valid_tokens", {})          # check recent token history
-    if scanned_token in valid_tokens:
-        token_expiry = valid_tokens[scanned_token]        # get token expiry timestamp
-        if now <= token_expiry + config.MOBILE_GRACE_PERIOD: # 20s mobile loading grace buffer
-            return "TOKEN_VALID"                          # token accepted
-
-    return "TOKEN_EXPIRED"                                # expired or invalid
+    # Any older/previous QR token is strictly expired
+    return "TOKEN_EXPIRED"
 
 
 def process_attendance_submission(class_name, subject, date_str, time_slot, roll_number, client_ip=None):
@@ -142,6 +141,8 @@ def process_attendance_submission(class_name, subject, date_str, time_slot, roll
         return "EMPTY_ROLL_NUMBER"                        # reject blank input
 
     state = get_system_state()                            # shared state memory
+    if not state.get("active"):
+        return "SESSION_NOT_ACTIVE"                       # reject if session is inactive
 
     if roll_number in state.get("session_present_rolls", []): # duplicate in memory
         return "ALREADY_MARKED"
